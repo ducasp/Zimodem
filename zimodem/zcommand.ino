@@ -2738,6 +2738,7 @@ void ZCommand::showInitMessage()
   int totalSPIFFSSize = info.totalBytes;
 #ifdef RS232_INVERTED
   serial.prints("C64Net WiFi Firmware v");
+  serial.prints("Arrow Keys mod. by AOG (2020)");
 #else
   serial.prints("Zimodem Firmware v");
 #endif
@@ -2747,6 +2748,7 @@ void ZCommand::showInitMessage()
   //serial.prints(" (");
   //serial.prints(compile_date);
   //serial.prints(")");
+  serial.prints("Arrow Keys mod. by AOG (2020)");
   serial.prints(commandMode.EOLN);
   char s[100];
 #ifdef ZIMODEM_ESP32
@@ -3334,4 +3336,3 @@ void ZCommand::loop()
   }
   checkBaudChange();
 }
-

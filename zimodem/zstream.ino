@@ -57,8 +57,11 @@ bool ZStream::isDisconnectedOnStreamExit()
 void ZStream::serialIncoming()
 {
   int bytesAvailable = HWSerial.available();
+ 
+  
   if(bytesAvailable == 0)
     return;
+  
   while(--bytesAvailable >= 0)
   {
     uint8_t c=HWSerial.read();
@@ -83,10 +86,41 @@ void ZStream::serialIncoming()
         serial.printb(c);
       if(isPETSCII())
         c = petToAsc(c);
-      socketWrite(c);
+        
+      TxBuf[Txbsize]=c;
+      Txbsize++;
+      if ((Txbsize==3))
+        {
+          // Check arrow keys
+          if ( (TxBuf[0]==0x1b) && (TxBuf[0]==0x5B)&& (TxBuf[0]==0x41))
+            {
+            current->write_buf(TxBuf,Txbsize);
+            Txbsize=0;
+            }
+          if ( (TxBuf[0]==0x1b) && (TxBuf[0]==0x5B)&& (TxBuf[0]==0x42))
+            {
+            current->write_buf(TxBuf,Txbsize);
+            Txbsize=0;
+            }
+          if ( (TxBuf[0]==0x1b) && (TxBuf[0]==0x5B)&& (TxBuf[0]==0x43))
+            {
+            current->write_buf(TxBuf,Txbsize);
+            Txbsize=0;
+            }
+          if ( (TxBuf[0]==0x1b) && (TxBuf[0]==0x5B)&& (TxBuf[0]==0x44))
+            {
+            current->write_buf(TxBuf,Txbsize);
+            Txbsize=0;
+            }
+        }
     }
   }
-  
+      if (Txbsize>0)
+        {
+          current->write_buf(TxBuf,Txbsize);
+          Txbsize=0;
+        }
+        
   currentExpiresTimeMs = 0;
   if(plussesInARow==3)
     currentExpiresTimeMs=millis()+800;
@@ -123,9 +157,9 @@ void ZStream::socketWrite(uint8_t c)
   if(current->isConnected())
   {
     if(c == 0xFF && isTelnet()) 
-      current->write(c); 
-    current->write(c);
-    logSocketOut(c);
+        current->write(c); 
+    
+    //logSocketOut(c);
     nextFlushMs=millis()+250;
     //current->flush(); // rendered safe by available check
     //delay(0);
@@ -254,4 +288,3 @@ void ZStream::loop()
   }
   checkBaudChange();
 }
-

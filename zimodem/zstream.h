@@ -35,13 +35,12 @@ class ZStream : public ZMode
     FlowControlType getFlowControl();
     bool isTelnet();
     bool isDisconnectedOnStreamExit();
-
  
   public:
+
     
     void switchTo(WiFiClientNode *conn);
     
     void serialIncoming();
     void loop();
 };
-

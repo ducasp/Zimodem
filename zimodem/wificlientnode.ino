@@ -361,11 +361,19 @@ unsigned long WiFiClientNode::nextRingTime(long delta)
   return nextRingMillis;
 }
 
+
 size_t WiFiClientNode::write(uint8_t c)
 {
   const uint8_t one[] = {c};
   write(one,1);
 }
+
+size_t WiFiClientNode::write_buf(const uint8_t *buf, uint8_t bsize)
+{
+  write(buf,bsize);
+}
+
+
 
 int WiFiClientNode::getNumOpenWiFiConnections()
 {
@@ -384,4 +392,3 @@ int WiFiClientNode::getNumOpenWiFiConnections()
   }
   return num;
 }
-

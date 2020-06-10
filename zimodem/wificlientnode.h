@@ -57,6 +57,7 @@ class WiFiClientNode : public Stream
     char *machineState = NULL;
     String machineQue = "";
 
+
     uint8_t lastPacketBuf[LAST_PACKET_BUF_SIZE];
     int lastPacketLen=0;
     //uint8_t overflowBuf[OVERFLOW_BUF_SIZE];
@@ -84,6 +85,7 @@ class WiFiClientNode : public Stream
     void setDisconnectOnStreamExit(bool tf);
 
     size_t write(uint8_t c);
+    size_t write_buf(const uint8_t *buf, uint8_t bsize);
     size_t write(const uint8_t *buf, size_t size);
     int read();
     int peek();
@@ -94,5 +96,3 @@ class WiFiClientNode : public Stream
 
     static int getNumOpenWiFiConnections();
 };
-
-
