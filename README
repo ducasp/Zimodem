@@ -2,7 +2,7 @@ C64Net WiFi Firmware 3.5.4 (C)2016-2020 Bo Zimmerman
 Please read the LICENSE file for license information
 Please read the NOTICE file for credits information
 
-Modifications in zstream.ino, zstream.h, wificlientnode.h, wificlientnode.ino and zcommand.ino by AOG (2020)
+Modifications in zimodem.ino, zstream.ino, zstream.h, wificlientnode.h, wificlientnode.ino and zcommand.ino by AOG (2020)
 These changes allows to navigate BBSs using the arrow keys.
 
 
