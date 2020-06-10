@@ -2,6 +2,10 @@ C64Net WiFi Firmware 3.5.4 (C)2016-2020 Bo Zimmerman
 Please read the LICENSE file for license information
 Please read the NOTICE file for credits information
 
+Modifications in zstream.ino, zstream.h, wificlientnode.h, wificlientnode.ino and zcommand.ino by AOG (2020)
+These changes allows to navigate BBSs using the arrow keys.
+
+
 Intro:
 ------
 This firmware code, "C64Net WiFi Firmware", provides an api for communication between a serial terminal and the ESP8266 or ESP32.  It simulates the old-style Hayes "AT" commands, so that the ESP8266 appears to the terminal as if it were a Hayes modem.  These "AT" commands may then be issued to the ESP8266 in order to force it to connect to a wireless access point, and from there to make one or more manageable connections to the internet.  It also includes a streaming serial "telnet" mode, and server/port listener capabilities.
