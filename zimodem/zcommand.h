@@ -16,7 +16,8 @@
 
 const int MAX_COMMAND_SIZE=256;
 #define ZI_STATE_MACHINE_LEN 7
-#define DEFAULT_TERMTYPE "Zimodem"
+#define DEFAULT_TERMTYPE "VT100"
+
 
 enum ZResult
 {
@@ -62,8 +63,7 @@ enum ConfigOptions
   CFG_HOSTNAME=29,
   CFG_PRINTDELAYMS=30,
   CFG_PRINTSPEC=31,
-  CFG_TERMTYPE=32,
-  CFG_LAST=32
+  CFG_LAST=31
 };
 
 enum BinType
@@ -71,8 +71,7 @@ enum BinType
   BTYPE_NORMAL=0,
   BTYPE_HEX=1,
   BTYPE_DEC=2,
-  BTYPE_NORMAL_NOCHK=3,
-  BTYPE_INVALID=4
+  BTYPE_INVALID=3
 };
 
 class ZCommand : public ZMode
@@ -115,6 +114,7 @@ class ZCommand : public ZMode
 
     byte CRC8(const byte *data, byte len);
 
+    void showHelpMessage();
     void showInitMessage();
     bool readSerialStream();
     bool clearPlusProgress();
@@ -133,7 +133,6 @@ class ZCommand : public ZMode
     void connectionArgs(WiFiClientNode *c);
     uint8_t *doStateMachine(uint8_t *buf, int *bufLen, char **machineState, String *machineQue, char *stateMachine);
     uint8_t *doMaskOuts(uint8_t *buf, int *bufLen, char *maskOuts);
-    ZResult doWebDump(Stream *in, int len, const bool cacheFlag);
     ZResult doWebDump(const char *filename, const bool cache);
 
     ZResult doResetCommand();
@@ -171,5 +170,3 @@ class ZCommand : public ZMode
     void loop();
     void reset();
 };
-
-
