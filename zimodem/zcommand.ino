@@ -145,7 +145,6 @@ void ZCommand::setConfigDefaults()
   setCharArray(&delimiters,"");
   setCharArray(&stateMachine,"");
   machineState = stateMachine;
-  termType = DEFAULT_TERMTYPE;
 }
 
 char lc(char c)
@@ -285,7 +284,7 @@ void ZCommand::reSaveConfig()
            "%d,%d,%d,%d,%d,%d,"
            "%d,"
            "%s,%s,%s,"
-           "%d,%s,%s", 
+           "%d,%s", 
             wifiSSI.c_str(), wifiPW.c_str(), baudRate, eoln,
             serial.getFlowControlType(), doEcho, suppressResponses, numericResponses,
             longResponses, serial.isPetsciiMode(), dcdMode, serialConfig, ctsMode,
@@ -293,7 +292,7 @@ void ZCommand::reSaveConfig()
             riMode,dtrMode,dsrMode,pinRI,pinDTR,pinDSR,
             zclock.isDisabled()?999:zclock.getTimeZoneCode(),
             zclock.getFormat().c_str(),zclock.getNtpServerHost().c_str(),hostname.c_str(),
-            printMode.getTimeoutDelayMs(),printMode.getLastPrinterSpec(),termType.c_str()
+            printMode.getTimeoutDelayMs(),printMode.getLastPrinterSpec()
             );
   f.close();
   delay(500);
@@ -429,8 +428,6 @@ void ZCommand::setOptionsFromSavedConfig(String configArguments[])
   //if(configArguments[CFG_PRINTDELAYMS].length()>0) // since you can't change it, what's the point?
   //  printMode.setTimeoutDelayMs(atoi(configArguments[CFG_PRINTDELAYMS].c_str()));
   printMode.setLastPrinterSpec(configArguments[CFG_PRINTSPEC].c_str());
-  if(configArguments[CFG_TERMTYPE].length()>0)
-    termType = configArguments[CFG_TERMTYPE];
 }
 
 void ZCommand::parseConfigOptions(String configArguments[])
@@ -897,9 +894,6 @@ void ZCommand::headerOut(const int channel, const int sz, const int crc8)
   case BTYPE_DEC:
     sprintf(hbuf,"[%s%d%s%d%s%d%s]%s",EOLN.c_str(),channel,EOLN.c_str(),sz,EOLN.c_str(),crc8,EOLN.c_str(),EOLN.c_str());
     break;
-  case BTYPE_NORMAL_NOCHK:
-    sprintf(hbuf,"[ %d %d ]%s",channel,sz,EOLN.c_str());
-    break;
   }
   serial.prints(hbuf);
 }
@@ -922,47 +916,65 @@ ZResult ZCommand::doWebStream(int vval, uint8_t *vbuf, int vlen, bool isNumber, 
     }
   }
   else
-  if((binType == BTYPE_NORMAL_NOCHK)
-  &&(machineQue.length()==0))
-  {
-    uint32_t respLength=0;
-    WiFiClient *c = doWebGetStream(hostIp, port, req, doSSL, &respLength); 
-    if(c==null)
-    {
-      serial.prints(EOLN);
-      return ZERROR;
-    }
-    headerOut(0,respLength,0);
-    serial.flush(); // stupid important because otherwise apps that go xoff miss the header info
-    ZResult res = doWebDump(c,respLength,false);
-    c->stop();
-    delete c;
-    serial.prints(EOLN);
-    return res;
-  }
-  else
   if(!doWebGet(hostIp, port, &SPIFFS, filename, req, doSSL))
     return ZERROR;
   return doWebDump(filename, cache);
 }
 
-ZResult ZCommand::doWebDump(Stream *in, int len, const bool cacheFlag)
+ZResult ZCommand::doWebDump(const char *filename, const bool cache)
 {
-  bool flowControl=!cacheFlag;
-  BinType streamType = cacheFlag?BTYPE_NORMAL:binType;
+  machineState = stateMachine;
+  int chk8=0;
   uint8_t *buf = (uint8_t *)malloc(1);
   int bufLen = 1;
-  int bct=0;
-  unsigned long now = millis();
-  while((len>0)
-  && ((millis()-now)<10000))
+  int len = 0;
+  //if(!cache)
   {
-    if(((!flowControl) || serial.isSerialOut())
-    &&(in->available()>0))
+    delay(100);
+    char *oldMachineState = machineState;
+    String oldMachineQue = machineQue;
+    File f = SPIFFS.open(filename, "r");
+    int flen = f.size();
+    for(int i=0;i<flen;i++)
     {
-      now=millis();
+      int c=f.read();
+      if(c<0)
+        break;
+      buf[0]=c;
+      bufLen = 1;
+      buf = doMaskOuts(buf,&bufLen,maskOuts);
+      buf = doStateMachine(buf,&bufLen,&machineState,&machineQue,stateMachine);
+      len += bufLen;
+      if(!cache)
+      {
+        for(int i1=0;i1<bufLen;i1++)
+        {
+          chk8+=buf[i1];
+          if(chk8>255)
+            chk8-=256;
+        }
+      }
+    }
+    f.close();
+    machineState = oldMachineState;
+    machineQue = oldMachineQue;
+  }
+  if(!cache)
+  {
+    headerOut(0,len,chk8);
+    serial.flush(); // stupid important because otherwise apps that go xoff miss the header info
+  }
+  File f = SPIFFS.open(filename, "r");
+  len = f.size();
+  bool flowControl=!cache;
+  BinType streamType = cache?BTYPE_NORMAL:binType;
+  int bct=0;
+  while(len>0)
+  {
+    if((!flowControl) || serial.isSerialOut())
+    {
       len--;
-      int c=in->read();
+      int c=f.read();
       if(c<0)
         break;
       buf[0] = (uint8_t)c;
@@ -972,13 +984,12 @@ ZResult ZCommand::doWebDump(Stream *in, int len, const bool cacheFlag)
       for(int i=0;i<bufLen;i++)
       {
         c=buf[i];
-        if(cacheFlag && serial.isPetsciiMode())
+        if(cache && serial.isPetsciiMode())
           c=ascToPetcii(c);
         
         switch(streamType)
         {
           case BTYPE_NORMAL:
-          case BTYPE_NORMAL_NOCHK:
             serial.write((uint8_t)c);
             break;
           case BTYPE_HEX:
@@ -1008,6 +1019,7 @@ ZResult ZCommand::doWebDump(Stream *in, int len, const bool cacheFlag)
     {
       serial.setXON(true);
       free(buf);
+      f.close();
       machineState = stateMachine;
       return ZOK;
     }
@@ -1023,6 +1035,7 @@ ZResult ZCommand::doWebDump(Stream *in, int len, const bool cacheFlag)
         serial.setXON(true);
         free(buf);
         machineState = stateMachine;
+        f.close();
         return ZOK;
       }
       delay(1);
@@ -1033,63 +1046,8 @@ ZResult ZCommand::doWebDump(Stream *in, int len, const bool cacheFlag)
   machineState = stateMachine;
   if(bct > 0)
     serial.prints(EOLN);
-}
-
-ZResult ZCommand::doWebDump(const char *filename, const bool cache)
-{
-  machineState = stateMachine;
-  int chk8=0;
-  int bufLen = 1;
-  int len = 0;
-  
-  {
-    File f = SPIFFS.open(filename, "r");
-    int flen = f.size();
-    if((binType != BTYPE_NORMAL_NOCHK)
-    &&(machineQue.length()==0))
-    {
-      uint8_t *buf = (uint8_t *)malloc(1);
-      delay(100);
-      char *oldMachineState = machineState;
-      String oldMachineQue = machineQue;
-      for(int i=0;i<flen;i++)
-      {
-        int c=f.read();
-        if(c<0)
-          break;
-        buf[0]=c;
-        bufLen = 1;
-        buf = doMaskOuts(buf,&bufLen,maskOuts);
-        buf = doStateMachine(buf,&bufLen,&machineState,&machineQue,stateMachine);
-        len += bufLen;
-        if(!cache)
-        {
-          for(int i1=0;i1<bufLen;i1++)
-          {
-            chk8+=buf[i1];
-            if(chk8>255)
-              chk8-=256;
-          }
-        }
-      }
-      machineState = oldMachineState;
-      machineQue = oldMachineQue;
-      free(buf);
-    }
-    else
-      len=flen;
-    f.close();
-  }
-  File f = SPIFFS.open(filename, "r");
-  if(!cache)
-  {
-    headerOut(0,len,chk8);
-    serial.flush(); // stupid important because otherwise apps that go xoff miss the header info
-  }
-  len = f.size();
-  ZResult res = doWebDump(&f, len, cache);
   f.close();
-  return res;
+  return ZIGNORE;
 }
 
 ZResult ZCommand::doUpdateFirmware(int vval, uint8_t *vbuf, int vlen, bool isNumber)
@@ -1102,10 +1060,10 @@ ZResult ZCommand::doUpdateFirmware(int vval, uint8_t *vbuf, int vlen, bool isNum
   uint8_t buf[255];
   int bufSize = 254;
 #ifdef ZIMODEM_ESP32
-  if((!doWebGetBytes("www.zimmers.net", 80, "/otherprojs/guru-latest-version.txt", false, buf, &bufSize))||(bufSize<=0))
+  //if((!doWebGetBytes("www.zimmers.net", 80, "/otherprojs/guru-latest-version.txt", false, buf, &bufSize))||(bufSize<=0))
     return ZERROR;
 #else
-  if((!doWebGetBytes("www.zimmers.net", 80, "/otherprojs/c64net-latest-version.txt", false, buf, &bufSize))||(bufSize<=0))
+  //if((!doWebGetBytes("www.zimmers.net", 80, "/otherprojs/c64net-latest-version.txt", false, buf, &bufSize))||(bufSize<=0))
     return ZERROR;
 #endif
 
@@ -1643,8 +1601,7 @@ ZResult ZCommand::doEOLNCommand(int vval, uint8_t *vbuf, int vlen, bool isNumber
 bool ZCommand::readSerialStream()
 {
   bool crReceived=false;
-  while((HWSerial.available()>0)
-        &&(!crReceived))
+  while(HWSerial.available()>0)
   {
     uint8_t c=HWSerial.read();
     logSerialIn(c);
@@ -1789,20 +1746,23 @@ ZResult ZCommand::doSerialCommand()
     sbuf = previousCommand;
     len=previousCommand.length();
   }
+  
+  if((sbuf.length()==4)
+  &&(lc(sbuf[0])=='h')
+  &&(sbuf[1]=='e')
+  &&(sbuf[2]=='l')
+  &&(sbuf[3]=='p'))
+  {
+    showHelpMessage();
+    ZResult Result=ZOK;
+  }
+
+  
   if(logFileOpen)
     logPrintfln("Command: %s",sbuf.c_str());
   
   int crc8=-1;  
   ZResult result=ZOK;
-  
-  if((sbuf.length()==4)
-  &&(strcmp(sbuf.c_str(),"%!PS")==0))
-  {
-    result = printMode.switchToPostScript("%!PS\n");
-    sendOfficialResponse(result);
-    return result;
-  }
-  
   int index=0;
   while((index<len-1)
   &&((lc(sbuf[index])!='a')||(lc(sbuf[index+1])!='t')))
@@ -2122,26 +2082,7 @@ ZResult ZCommand::doSerialCommand()
                else
                  result=ZERROR;
                break;
-             case 46:
-             {
-               bool wasActive=(dcdStatus==dcdActive);
-               pinModeDecoder(sval,&dcdActive,&dcdInactive,DEFAULT_DCD_HIGH,DEFAULT_DCD_LOW);
-               dcdStatus = wasActive?dcdActive:dcdInactive;
-               result=ZOK;
-               s_pinWrite(pinDCD,dcdStatus);
-               break;
-             }
-             case 47:
-               if((sval >= 0) && (sval <= MAX_PIN_NO) && pinSupport[sval])
-               {
-                 pinDCD=sval;
-                 pinMode(pinDCD,OUTPUT);
-                 s_pinWrite(pinDCD,dcdStatus);
-                 result=ZOK;
-               }
-               else
-                 result=ZERROR;
-               break;
+             
              case 48:
                pinModeDecoder(sval,&ctsActive,&ctsInactive,DEFAULT_CTS_HIGH,DEFAULT_CTS_LOW);
                result=ZOK;
@@ -2157,77 +2098,7 @@ ZResult ZCommand::doSerialCommand()
                else
                  result=ZERROR;
                break;
-             case 50:
-               pinModeDecoder(sval,&rtsActive,&rtsInactive,DEFAULT_RTS_HIGH,DEFAULT_RTS_LOW);
-               if(pinSupport[pinRTS])
-               {
-                 serial.setFlowControlType(serial.getFlowControlType());
-                 s_pinWrite(pinRTS,rtsActive);
-               }
-               result=ZOK;
-               break;
-             case 51:
-               if((sval >= 0) && (sval <= MAX_PIN_NO) && pinSupport[sval])
-               {
-                 pinRTS=sval;
-                 pinMode(pinRTS,OUTPUT);
-                 serial.setFlowControlType(serial.getFlowControlType());
-                 s_pinWrite(pinRTS,rtsActive);
-                 result=ZOK;
-               }
-               else
-                 result=ZERROR;
-               break;
-             case 52:
-               pinModeDecoder(sval,&riActive,&riInactive,DEFAULT_RI_HIGH,DEFAULT_RI_LOW);
-               if(pinSupport[pinRI])
-               {
-                 serial.setFlowControlType(serial.getFlowControlType());
-                 s_pinWrite(pinRI,riInactive);
-               }
-               result=ZOK;
-               break;
-             case 53:
-               if((sval >= 0) && (sval <= MAX_PIN_NO) && pinSupport[sval])
-               {
-                 pinRI=sval;
-                 pinMode(pinRI,OUTPUT);
-                 s_pinWrite(pinRTS,riInactive);
-                 result=ZOK;
-               }
-               else
-                 result=ZERROR;
-               break;
-             case 54:
-               pinModeDecoder(sval,&dtrActive,&dtrInactive,DEFAULT_DTR_HIGH,DEFAULT_DTR_LOW);
-               result=ZOK;
-               break;
-             case 55:
-               if((sval >= 0) && (sval <= MAX_PIN_NO) && pinSupport[sval])
-               {
-                 pinDTR=sval;
-                 pinMode(pinDTR,INPUT);
-                 result=ZOK;
-               }
-               else
-                 result=ZERROR;
-               break;
-             case 56:
-               pinModeDecoder(sval,&dsrActive,&dsrInactive,DEFAULT_DSR_HIGH,DEFAULT_DSR_LOW);
-               s_pinWrite(pinDSR,dsrActive);
-               result=ZOK;
-               break;
-             case 57:
-               if((sval >= 0) && (sval <= MAX_PIN_NO) && pinSupport[sval])
-               {
-                 pinDSR=sval;
-                 pinMode(pinDSR,OUTPUT);
-                 s_pinWrite(pinDSR,dsrActive);
-                 result=ZOK;
-               }
-               else
-                 result=ZERROR;
-               break;
+             
              case 60:
                if(sval >= 0)
                {
@@ -2237,12 +2108,6 @@ ZResult ZCommand::doSerialCommand()
                  else
                    SPIFFS.remove("/zlisteners.txt");
                }
-               else
-                 result=ZERROR;
-               break;
-             case 61:
-               if(sval > 0)
-                 printMode.setTimeoutDelayMs(sval * 1000);
                else
                  result=ZERROR;
                  break;
@@ -2584,7 +2449,6 @@ ZResult ZCommand::doSerialCommand()
                     else
                     {
                       termType = eq;
-                      termType.replace(',','.');
                       result=ZOK;
                     }
                     break;
@@ -2641,9 +2505,6 @@ ZResult ZCommand::doSerialCommand()
           }
           else
             result = doTimeZoneSetupCommand(vval, vbuf, vlen, isNumber);
-          break;
-        case 'u':
-          result=doUpdateFirmware(vval,vbuf,vlen,isNumber);
           break;
         //TODO: host name cmd here somewhere...
         default:
@@ -2720,6 +2581,59 @@ void ZCommand::sendOfficialResponse(ZResult res)
     }
   }
 }
+/*
+void ZCommand::showHelpMessage()
+{
+  //Read File data
+  char fbuf[70];
+  File f = SPIFFS.open("/wifihelp.txt", "r");
+  Serial.println("");
+  if (!f) 
+  {
+    Serial.println("Error: Help text file open failed");
+  }
+  else
+  {
+    while (f.available()) 
+    {
+      int l = f.readBytesUntil('\n', fbuf, sizeof(fbuf));
+      fbuf[l] = 0;
+      Serial.println(fbuf);
+    }
+  }
+  f.close();
+  Serial.println("");
+  serial.prints(commandMode.EOLN);
+}
+*/
+
+void ZCommand::showHelpMessage()
+{
+  
+  serial.prints("BadCaT MSX WifiModem V1.0");serial.prints(EOLN);
+  serial.prints("A Fork of Bo Zimmerman Zimodem firmware v.3.5.5");serial.prints(EOLN);
+  serial.prints("Modifications by A. Ortiz (2020)");serial.prints(EOLN);
+  serial.prints("* Arrow Keys correction version");serial.prints(EOLN);
+  serial.prints("");serial.prints(EOLN);
+  serial.prints("Basic commands:");serial.prints(EOLN);
+  serial.prints("---------------");serial.prints(EOLN);
+  serial.prints("help : shows this text");serial.prints(EOLN);
+  serial.prints("AT+CONFIG : Config menu");serial.prints(EOLN);
+  serial.prints("ATD\"[HOSTNAME]:[PORT]\" : open streaming connetion (MSX2).");serial.prints(EOLN);
+  serial.prints("ATDT\"[HOSTNAME]:[PORT]\" : open TELNET connetion (MSX).");serial.prints(EOLN);
+  serial.prints("+++ : With a 1 second pause -> cmd mode.");serial.prints(EOLN);
+  serial.prints("ATZ : closes all open socket connections ");serial.prints(EOLN);
+  serial.prints("A/ : Repeats the previous command");serial.prints(EOLN);
+  serial.prints("ATI2 : Shows the modem's current IP address");serial.prints(EOLN);
+  serial.prints("ATI3 : Shows the modem's current Wireless Router connection");serial.prints(EOLN);
+  serial.prints("ATBn : Sets a new serial Baud Rate. Takes effect immediately.");serial.prints(EOLN);
+  serial.prints("AT&W: Write changes to modem flash. BE SURE BEFORE DOING THIS!");serial.prints(EOLN);
+  serial.prints("ATC : Shows information about the current network connection ");serial.prints(EOLN);
+  serial.prints("ATH  : Disconnect from the host.");
+  serial.prints("Ready");serial.prints(EOLN);
+
+}
+
 
 void ZCommand::showInitMessage()
 {
@@ -2737,10 +2651,11 @@ void ZCommand::showInitMessage()
   SPIFFS.info(info);
   int totalSPIFFSSize = info.totalBytes;
 #ifdef RS232_INVERTED
-  serial.prints("C64Net WiFi Firmware v");
-  serial.prints("Arrow Keys mod. by AOG (2020)");
+  serial.prints("BaDCaT MSX Wifi Modem v0.1"); serial.prints(EOLN);
+  serial.prints("A fork of Zimodem firmware v");
 #else
-  serial.prints("Zimodem Firmware v");
+  serial.prints("BaDCaT MSX Wifi Modem v0.1");serial.prints(EOLN);
+  serial.prints("A fork of Zimodem firmware v");
 #endif
 #endif
   HWSerial.setTimeout(60000);
@@ -2748,13 +2663,12 @@ void ZCommand::showInitMessage()
   //serial.prints(" (");
   //serial.prints(compile_date);
   //serial.prints(")");
-  serial.prints("Arrow Keys mod. by AOG (2020)");
   serial.prints(commandMode.EOLN);
   char s[100];
 #ifdef ZIMODEM_ESP32
-  sprintf(s,"sdk=%s chipid=%d cpu@%d",ESP.getSdkVersion(),ESP.getChipRevision(),ESP.getCpuFreqMHz());
+  sprintf(s,"chipid=%d cpu@%d MHz",ESP.getChipRevision(),ESP.getCpuFreqMHz());
 #else
-  sprintf(s,"sdk=%s chipid=%d cpu@%d",ESP.getSdkVersion(),ESP.getFlashChipId(),ESP.getCpuFreqMHz());
+  sprintf(s,"chipid=%d cpu@%d MHz",ESP.getFlashChipId(),ESP.getCpuFreqMHz());
 #endif
   serial.prints(s);
   serial.prints(commandMode.EOLN);
@@ -2762,7 +2676,7 @@ void ZCommand::showInitMessage()
   sprintf(s,"totsize=%dk hsize=%dk fsize=%dk speed=%dm",(ESP.getFlashChipSize()/1024),(ESP.getFreeHeap()/1024),totalSPIFFSSize/1024,(ESP.getFlashChipSpeed()/1000000));
 #else
   sprintf(s,"totsize=%dk ssize=%dk fsize=%dk speed=%dm",(ESP.getFlashChipRealSize()/1024),(ESP.getSketchSize()/1024),totalSPIFFSSize/1024,(ESP.getFlashChipSpeed()/1000000));
-#endif
+#endif 
   
   serial.prints(s);
   serial.prints(commandMode.EOLN);
@@ -2934,7 +2848,6 @@ void ZCommand::reSendLastPacket(WiFiClientNode *conn)
       switch(binType)
       {
         case BTYPE_NORMAL:
-        case BTYPE_NORMAL_NOCHK:
           serial.write(c);
           break;
         case BTYPE_HEX:

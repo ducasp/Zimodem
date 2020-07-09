@@ -57,7 +57,7 @@ bool ZStream::isDisconnectedOnStreamExit()
 void ZStream::serialIncoming()
 {
   int bytesAvailable = HWSerial.available();
- 
+  unsigned long time_now;
   
   if(bytesAvailable == 0)
     return;
@@ -86,40 +86,60 @@ void ZStream::serialIncoming()
         serial.printb(c);
       if(isPETSCII())
         c = petToAsc(c);
-        
+       
       TxBuf[Txbsize]=c;
       Txbsize++;
+      
+      
+    }
+  }
       if ((Txbsize==3))
         {
           // Check arrow keys
-          if ( (TxBuf[0]==0x1b) && (TxBuf[0]==0x5B)&& (TxBuf[0]==0x41))
+          if ( (TxBuf[0]==0x1b) && (TxBuf[1]==0x5B)&& (TxBuf[2]==0x41))
             {
             current->write_buf(TxBuf,Txbsize);
             Txbsize=0;
+            serial.flush();
+            delay(100);
             }
-          if ( (TxBuf[0]==0x1b) && (TxBuf[0]==0x5B)&& (TxBuf[0]==0x42))
+          if ( (TxBuf[0]==0x1b) && (TxBuf[1]==0x5B)&& (TxBuf[2]==0x42))
             {
             current->write_buf(TxBuf,Txbsize);
             Txbsize=0;
+            serial.flush();
+            delay(100);            
             }
-          if ( (TxBuf[0]==0x1b) && (TxBuf[0]==0x5B)&& (TxBuf[0]==0x43))
+          if ( (TxBuf[0]==0x1b) && (TxBuf[1]==0x5B)&& (TxBuf[2]==0x43))
             {
             current->write_buf(TxBuf,Txbsize);
             Txbsize=0;
+            serial.flush();
+            delay(100);
+            
             }
-          if ( (TxBuf[0]==0x1b) && (TxBuf[0]==0x5B)&& (TxBuf[0]==0x44))
+          if ( (TxBuf[0]==0x1b) && (TxBuf[1]==0x5B)&& (TxBuf[2]==0x44))
             {
             current->write_buf(TxBuf,Txbsize);
             Txbsize=0;
+            serial.flush();
+            delay(100);
             }
+            
         }
-    }
-  }
-      if (Txbsize>0)
+        
+      if ((Txbsize>=1)&&(TxBuf[0]!=0x1b))
         {
           current->write_buf(TxBuf,Txbsize);
           Txbsize=0;
         }
+        
+     else
+        {
+          current->write_buf(TxBuf,Txbsize);
+          Txbsize=0;
+        }
+        
         
   currentExpiresTimeMs = 0;
   if(plussesInARow==3)

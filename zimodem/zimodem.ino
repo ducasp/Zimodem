@@ -75,7 +75,7 @@ const char compile_date[] = __DATE__ " " __TIME__;
 # define DEFAULT_PIN_CTS 5 // is 0 for ESP-01, see getDefaultCtsPin() below.
 # define DEFAULT_PIN_DCD 2
 # define DEFAULT_FCT FCT_RTSCTS
-# define RS232_INVERTED 0
+# define RS232_INVERTED 1
 # define debugPrintf doNothing
 # define preEOLN(...)
 # define echoEOLN(...) serial.prints(EOLN)
@@ -109,7 +109,7 @@ const char compile_date[] = __DATE__ " " __TIME__;
 # define DEFAULT_DTR_LOW  HIGH
 #endif
 
-#define DEFAULT_BAUD_RATE 19200
+#define DEFAULT_BAUD_RATE 57600
 #define DEFAULT_SERIAL_CONFIG SERIAL_8N1
 #define MAX_PIN_NO 50
 #define INTERNAL_FLOW_CONTROL_DIV 380
@@ -199,7 +199,7 @@ static int dtrActive = DEFAULT_DTR_HIGH;
 static int dtrInactive = DEFAULT_DTR_LOW;
 static int dsrActive = DEFAULT_DSR_HIGH;
 static int dsrInactive = DEFAULT_DSR_LOW;
-static uint8_t TxBuf[64];
+static uint8_t TxBuf[16];
 static uint8_t Txbsize=0;
 static unsigned long lasttxt;
 
